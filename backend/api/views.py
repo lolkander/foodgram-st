@@ -37,32 +37,13 @@ from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 from django.conf import settings
 from rest_framework.pagination import PageNumberPagination
 from rest_framework.views import APIView
+from rest_framework import serializers
 
 User = get_user_model()
 
 
 class RecipePagination(PageNumberPagination):
     page_size_query_param = "limit"
-
-    def get_page_size(self, request):
-        page_size = None
-        if self.page_size_query_param:
-            try:
-                page_size_str = request.query_params.get(self.page_size_query_param)
-                if page_size_str is not None:
-                    page_size = int(page_size_str)
-                    if page_size <= 0:
-                        page_size = None
-                    elif self.max_page_size and page_size > self.max_page_size:
-                        page_size = self.max_page_size
-            except (ValueError, KeyError):
-                page_size = None
-        if page_size is None:
-            page_size_attr = getattr(self, "page_size", None)
-            if page_size_attr is None:
-                page_size_attr = settings.REST_FRAMEWORK.get("PAGE_SIZE", 10)
-            page_size = page_size_attr
-        return page_size
 
 
 class IngredientViewSet(viewsets.ReadOnlyModelViewSet):
@@ -112,7 +93,7 @@ class RecipeViewSet(viewsets.ModelViewSet):
     )
     def get_short_link(self, request, pk=None):
         recipe = get_object_or_404(Recipe, pk=pk)
-        short_link_value = f"http://myfoodgram.test/r/{recipe.id}"
+        short_link_value = f"{request.scheme}://{request.get_host()}/r/{recipe.id}"
         return Response({"short-link": short_link_value}, status=status.HTTP_200_OK)
 
     @action(
@@ -124,23 +105,15 @@ class RecipeViewSet(viewsets.ModelViewSet):
         recipe = get_object_or_404(Recipe, pk=pk)
         current_user = request.user
         if request.method == "POST":
-            if Favorite.objects.filter(user=current_user, recipe=recipe).exists():
-                return Response(
-                    {"errors": "Рецепт уже в избранном."},
-                    status=status.HTTP_400_BAD_REQUEST,
-                )
+            if current_user.favorites.filter(recipe=recipe).exists():
+                raise serializers.ValidationError("Рецепт уже в избранном.")
             Favorite.objects.create(user=current_user, recipe=recipe)
             serializer = RecipeInFollowSerializer(recipe, context={"request": request})
             return Response(serializer.data, status=status.HTTP_201_CREATED)
         elif request.method == "DELETE":
-            favorite_instance = Favorite.objects.filter(
-                user=current_user, recipe=recipe
-            ).first()
+            favorite_instance = current_user.favorites.filter(recipe=recipe).first()
             if not favorite_instance:
-                return Response(
-                    {"errors": "Этого рецепта нет в вашем избранном."},
-                    status=status.HTTP_400_BAD_REQUEST,
-                )
+                raise serializers.ValidationError("Этого рецепта нет в вашем избранном.")
             favorite_instance.delete()
             return Response(status=status.HTTP_204_NO_CONTENT)
         return Response(status=status.HTTP_405_METHOD_NOT_ALLOWED)
@@ -154,23 +127,15 @@ class RecipeViewSet(viewsets.ModelViewSet):
         recipe = get_object_or_404(Recipe, pk=pk)
         current_user = request.user
         if request.method == "POST":
-            if ShoppingCart.objects.filter(user=current_user, recipe=recipe).exists():
-                return Response(
-                    {"errors": "Рецепт уже в списке покупок."},
-                    status=status.HTTP_400_BAD_REQUEST,
-                )
+            if current_user.shopping_cart.filter(recipe=recipe).exists():
+                raise serializers.ValidationError("Рецепт уже в списке покупок.")
             ShoppingCart.objects.create(user=current_user, recipe=recipe)
             serializer = RecipeInFollowSerializer(recipe, context={"request": request})
             return Response(serializer.data, status=status.HTTP_201_CREATED)
         elif request.method == "DELETE":
-            cart_item = ShoppingCart.objects.filter(
-                user=current_user, recipe=recipe
-            ).first()
+            cart_item = current_user.shopping_cart.filter(recipe=recipe).first()
             if not cart_item:
-                return Response(
-                    {"errors": "Этого рецепта нет в вашем списке покупок."},
-                    status=status.HTTP_400_BAD_REQUEST,
-                )
+                raise serializers.ValidationError("Этого рецепта нет в вашем списке покупок.")
             cart_item.delete()
             return Response(status=status.HTTP_204_NO_CONTENT)
         return Response(status=status.HTTP_405_METHOD_NOT_ALLOWED)
@@ -239,35 +204,19 @@ class CustomUserViewSet(djoser_views.UserViewSet):
         permission_classes=[permissions.IsAuthenticated],
     )
     def subscribe(self, request, id=None):
-        user = request.user
-        author = get_object_or_404(User, id=id)
+        user_to_follow = get_object_or_404(User, id=id)
         if request.method == "POST":
-            if user == author:
-                return Response(
-                    {"errors": "Вы не можете подписаться на самого себя."},
-                    status=status.HTTP_400_BAD_REQUEST,
-                )
-            if Follow.objects.filter(user=user, author=author).exists():
-                return Response(
-                    {"errors": "Вы уже подписаны на этого пользователя."},
-                    status=status.HTTP_400_BAD_REQUEST,
-                )
-            serializer_create = FollowCreateSerializer(
-                data={"user": user.id, "author": author.id},
-                context={"request": request},
-            )
-            serializer_create.is_valid(raise_exception=True)
-            serializer_create.save()
-            response_serializer = FollowSerializer(author, context={"request": request})
+            serializer = FollowCreateSerializer(data={'author': user_to_follow.id}, context={'request': request})
+            serializer.is_valid(raise_exception=True)
+            serializer.save()
+            response_serializer = FollowSerializer(user_to_follow, context={"request": request})
             return Response(response_serializer.data, status=status.HTTP_201_CREATED)
         elif request.method == "DELETE":
-            subscription = Follow.objects.filter(user=user, author=author)
-            if not subscription.exists():
-                return Response(
-                    {"errors": "Вы не были подписаны на этого пользователя."},
-                    status=status.HTTP_400_BAD_REQUEST,
-                )
-            subscription.delete()
+            current_user = request.user
+            follow_instance = current_user.follower.filter(author=user_to_follow).first()
+            if not follow_instance:
+                raise serializers.ValidationError("Вы не подписаны на этого пользователя.")
+            follow_instance.delete()
             return Response(status=status.HTTP_204_NO_CONTENT)
 
     @action(

@@ -1,7 +1,8 @@
 from django.db import models
 from django.conf import settings
-from django.core.validators import MinValueValidator
+from django.core.validators import MinValueValidator, MaxValueValidator
 from django.core.exceptions import ValidationError
+from .constants import MIN_COOKING_TIME, MAX_COOKING_TIME, MIN_INGREDIENT_AMOUNT, MAX_INGREDIENT_AMOUNT
 
 
 class Ingredient(models.Model):
@@ -52,7 +53,10 @@ class Recipe(models.Model):
     tags = models.ManyToManyField(Tag, related_name="recipes", verbose_name="Теги")
     cooking_time = models.PositiveSmallIntegerField(
         "Время приготовления (в минутах)",
-        validators=[MinValueValidator(1, "Время приготовления должно быть больше 0")],
+        validators=[
+            MinValueValidator(MIN_COOKING_TIME, f"Время приготовления должно быть не меньше {MIN_COOKING_TIME}"),
+            MaxValueValidator(MAX_COOKING_TIME, f"Время приготовления должно быть не больше {MAX_COOKING_TIME}")
+        ],
     )
     pub_date = models.DateTimeField("Дата публикации", auto_now_add=True)
 
@@ -77,12 +81,16 @@ class RecipeIngredient(models.Model):
     )
     amount = models.PositiveSmallIntegerField(
         "Количество",
-        validators=[MinValueValidator(1, "Количество должно быть больше 0")],
+        validators=[
+            MinValueValidator(MIN_INGREDIENT_AMOUNT, f"Количество должно быть не меньше {MIN_INGREDIENT_AMOUNT}"),
+            MaxValueValidator(MAX_INGREDIENT_AMOUNT, f"Количество должно быть не больше {MAX_INGREDIENT_AMOUNT}")
+        ],
     )
 
     class Meta:
         verbose_name = "Ингредиент в рецепте"
         verbose_name_plural = "Ингредиенты в рецептах"
+        ordering = ('recipe', 'ingredient')
         constraints = [
             models.UniqueConstraint(
                 fields=["recipe", "ingredient"], name="unique_recipe_ingredient"

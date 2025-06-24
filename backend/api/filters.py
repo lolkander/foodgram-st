@@ -22,14 +22,11 @@ class RecipeFilter(filters.FilterSet):
         fields = ["author", "tags"]
 
     def filter_is_favorited(self, queryset, name, value):
-        if value and self.request.user.is_authenticated:
-            return queryset.filter(favorited_by__user=self.request.user)
         if self.request.user.is_authenticated:
             if value:
                 return queryset.filter(favorited_by__user=self.request.user)
-            else:
-                return queryset.exclude(favorited_by__user=self.request.user)
-        elif value:
+            return queryset.exclude(favorited_by__user=self.request.user)
+        if value:
             return queryset.none()
         return queryset
 
@@ -37,8 +34,7 @@ class RecipeFilter(filters.FilterSet):
         if self.request.user.is_authenticated:
             if value:
                 return queryset.filter(in_shopping_cart_of__user=self.request.user)
-            else:
-                return queryset.exclude(in_shopping_cart_of__user=self.request.user)
-        elif value:
+            return queryset.exclude(in_shopping_cart_of__user=self.request.user)
+        if value:
             return queryset.none()
         return queryset

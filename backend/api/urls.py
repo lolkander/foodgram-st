@@ -14,10 +14,6 @@ router.register("tags", TagViewSet, basename="tags")
 router.register("recipes", RecipeViewSet, basename="recipes")
 router.register("users", CustomUserViewSet, basename="custom-user")
 urlpatterns = [
-    path("users/me/avatar/", UserAvatarView.as_view(), name="user-me-avatar")
-]
-urlpatterns += router.urls
-urlpatterns = [
-    path("", include(router.urls)),
     path("users/me/avatar/", UserAvatarView.as_view(), name="user-me-avatar"),
 ]
+urlpatterns += router.urls
