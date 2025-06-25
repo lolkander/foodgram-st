@@ -2,7 +2,6 @@ from django.shortcuts import render, get_object_or_404
 from rest_framework import viewsets, filters
 from recipes.models import (
     Ingredient,
-    Tag,
     Recipe,
     RecipeIngredient,
     Follow,
@@ -11,7 +10,6 @@ from recipes.models import (
 )
 from .serializers import (
     IngredientSerializer,
-    TagSerializer,
     RecipeReadSerializer,
     RecipeWriteSerializer,
     FollowSerializer,
@@ -57,13 +55,6 @@ class IngredientViewSet(viewsets.ReadOnlyModelViewSet):
         if search_name:
             queryset = queryset.filter(name__istartswith=search_name)
         return queryset
-
-
-class TagViewSet(viewsets.ReadOnlyModelViewSet):
-    queryset = Tag.objects.all()
-    serializer_class = TagSerializer
-    permission_classes = []
-    pagination_class = None
 
 
 class RecipeViewSet(viewsets.ModelViewSet):
@@ -113,7 +104,9 @@ class RecipeViewSet(viewsets.ModelViewSet):
         elif request.method == "DELETE":
             favorite_instance = current_user.favorites.filter(recipe=recipe).first()
             if not favorite_instance:
-                raise serializers.ValidationError("Этого рецепта нет в вашем избранном.")
+                raise serializers.ValidationError(
+                    "Этого рецепта нет в вашем избранном."
+                )
             favorite_instance.delete()
             return Response(status=status.HTTP_204_NO_CONTENT)
         return Response(status=status.HTTP_405_METHOD_NOT_ALLOWED)
@@ -135,7 +128,9 @@ class RecipeViewSet(viewsets.ModelViewSet):
         elif request.method == "DELETE":
             cart_item = current_user.shopping_cart.filter(recipe=recipe).first()
             if not cart_item:
-                raise serializers.ValidationError("Этого рецепта нет в вашем списке покупок.")
+                raise serializers.ValidationError(
+                    "Этого рецепта нет в вашем списке покупок."
+                )
             cart_item.delete()
             return Response(status=status.HTTP_204_NO_CONTENT)
         return Response(status=status.HTTP_405_METHOD_NOT_ALLOWED)
@@ -206,16 +201,24 @@ class CustomUserViewSet(djoser_views.UserViewSet):
     def subscribe(self, request, id=None):
         user_to_follow = get_object_or_404(User, id=id)
         if request.method == "POST":
-            serializer = FollowCreateSerializer(data={'author': user_to_follow.id}, context={'request': request})
+            serializer = FollowCreateSerializer(
+                data={"author": user_to_follow.id}, context={"request": request}
+            )
             serializer.is_valid(raise_exception=True)
             serializer.save()
-            response_serializer = FollowSerializer(user_to_follow, context={"request": request})
+            response_serializer = FollowSerializer(
+                user_to_follow, context={"request": request}
+            )
             return Response(response_serializer.data, status=status.HTTP_201_CREATED)
         elif request.method == "DELETE":
             current_user = request.user
-            follow_instance = current_user.follower.filter(author=user_to_follow).first()
+            follow_instance = current_user.follower.filter(
+                author=user_to_follow
+            ).first()
             if not follow_instance:
-                raise serializers.ValidationError("Вы не подписаны на этого пользователя.")
+                raise serializers.ValidationError(
+                    "Вы не подписаны на этого пользователя."
+                )
             follow_instance.delete()
             return Response(status=status.HTTP_204_NO_CONTENT)
 

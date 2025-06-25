@@ -2,7 +2,6 @@ from django.contrib.auth import get_user_model
 from rest_framework import serializers
 from recipes.models import (
     Ingredient,
-    Tag,
     RecipeIngredient,
     Recipe,
     Favorite,
@@ -11,7 +10,12 @@ from recipes.models import (
 )
 from .fields import Base64ImageField
 from djoser import serializers as djoser_serializers
-from recipes.constants import MIN_INGREDIENT_AMOUNT, MAX_INGREDIENT_AMOUNT, MIN_COOKING_TIME, MAX_COOKING_TIME
+from recipes.constants import (
+    MIN_INGREDIENT_AMOUNT,
+    MAX_INGREDIENT_AMOUNT,
+    MIN_COOKING_TIME,
+    MAX_COOKING_TIME,
+)
 
 User = get_user_model()
 
@@ -104,14 +108,6 @@ class IngredientSerializer(serializers.ModelSerializer):
         read_only_fields = fields
 
 
-class TagSerializer(serializers.ModelSerializer):
-
-    class Meta:
-        model = Tag
-        fields = ("id", "name", "color", "slug")
-        read_only_fields = fields
-
-
 class RecipeIngredientReadSerializer(serializers.ModelSerializer):
     id = serializers.ReadOnlyField(source="ingredient.id")
     name = serializers.ReadOnlyField(source="ingredient.name")
@@ -196,20 +192,21 @@ class RecipeMutationResponseSerializer(serializers.ModelSerializer):
 
 class RecipeIngredientWriteSerializer(serializers.Serializer):
     id = serializers.PrimaryKeyRelatedField(queryset=Ingredient.objects.all())
-    amount = serializers.IntegerField(min_value=MIN_INGREDIENT_AMOUNT, max_value=MAX_INGREDIENT_AMOUNT)
+    amount = serializers.IntegerField(
+        min_value=MIN_INGREDIENT_AMOUNT, max_value=MAX_INGREDIENT_AMOUNT
+    )
 
 
 class RecipeWriteSerializer(serializers.ModelSerializer):
-    tags = serializers.PrimaryKeyRelatedField(
-        queryset=Tag.objects.all(), many=True, required=False, allow_empty=True
-    )
     ingredients = RecipeIngredientWriteSerializer(many=True)
     image = Base64ImageField()
-    cooking_time = serializers.IntegerField(min_value=MIN_COOKING_TIME, max_value=MAX_COOKING_TIME)
+    cooking_time = serializers.IntegerField(
+        min_value=MIN_COOKING_TIME, max_value=MAX_COOKING_TIME
+    )
 
     class Meta:
         model = Recipe
-        fields = ("id", "tags", "ingredients", "name", "image", "text", "cooking_time")
+        fields = ("id", "ingredients", "name", "image", "text", "cooking_time")
         read_only_fields = ("id",)
 
     def validate_ingredients(self, ingredients_data):
@@ -224,15 +221,6 @@ class RecipeWriteSerializer(serializers.ModelSerializer):
                 raise serializers.ValidationError("Ингредиенты не должны повторяться.")
             ingredient_ids.add(ingredient_id)
         return ingredients_data
-
-    def validate_tags(self, tags_data):
-        if tags_data:
-            seen_tags = set()
-            for tag in tags_data:
-                if tag.id in seen_tags:
-                    raise serializers.ValidationError("Теги не должны повторяться.")
-                seen_tags.add(tag.id)
-        return tags_data
 
     def validate(self, attrs):
         if self.partial and "ingredients" not in self.initial_data:
@@ -256,15 +244,12 @@ class RecipeWriteSerializer(serializers.ModelSerializer):
         RecipeIngredient.objects.bulk_create(recipe_ingredients_to_create)
 
     def create(self, validated_data):
-        tags_data = validated_data.pop("tags", [])
         ingredients_data = validated_data.pop("ingredients")
         recipe = Recipe.objects.create(**validated_data)
-        recipe.tags.set(tags_data)
         self._create_or_update_ingredients(recipe, ingredients_data)
         return recipe
 
     def update(self, instance, validated_data):
-        tags_data = validated_data.pop("tags", None)
         ingredients_data = validated_data.pop("ingredients", None)
         instance.name = validated_data.get("name", instance.name)
         instance.text = validated_data.get("text", instance.text)
@@ -274,8 +259,6 @@ class RecipeWriteSerializer(serializers.ModelSerializer):
         if "image" in validated_data:
             instance.image = validated_data.get("image", instance.image)
         instance.save()
-        if tags_data is not None:
-            instance.tags.set(tags_data)
         if ingredients_data is not None:
             self._create_or_update_ingredients(instance, ingredients_data)
         return instance
@@ -388,7 +371,5 @@ class FollowCreateSerializer(serializers.ModelSerializer):
                 "Вы не можете подписаться на самого себя."
             )
         if user.follower.filter(author=author).exists():
-            raise serializers.ValidationError(
-                "Вы уже подписаны на этого пользователя."
-            )
+            raise serializers.ValidationError("Вы уже подписаны на этого пользователя.")
         return data
